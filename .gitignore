@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.db
+.env
+node_modules/
+.next/
+dist/
+coverage/
+.DS_Store
+uvicorn_log.txt
+uvicorn_logs.log
+server.log
+intelligence_debug.jsonl
+response.json
