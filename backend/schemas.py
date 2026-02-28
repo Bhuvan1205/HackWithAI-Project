@@ -3,14 +3,16 @@ from datetime import date
 from typing import Literal, List
 import re
 
-ALLOWED_HOSPITALS = {f"H{i}" for i in range(1, 11)}
+ALLOWED_HOSPITALS = {f"H{i}" for i in range(1, 11)} | {f"HOSP00{i}" for i in range(1, 6)}
 ALLOWED_PROCEDURES = {"P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"}
 
 
 class ClaimInput(BaseModel):
     claim_id: str
     hospital_id: str
+    hospital_name: str | None = None
     patient_id: str
+    patient_name: str | None = None
     procedure_code: str
     package_rate: float
     claim_amount: float
@@ -85,6 +87,8 @@ class KnowledgeSignalSchema(BaseModel):
 
 class IntelligenceResponse(BaseModel):
     claim_id: str
+    hospital_name: str | None = None
+    patient_name: str | None = None
 
     # Legacy fields
     anomaly_score_norm: float
@@ -112,3 +116,78 @@ class IntelligenceMetricsResponse(BaseModel):
     hard_stop_count: int
     average_composite_index: float
     anomaly_band_distribution: dict
+
+
+class TokenUsage(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class ReportGenerationResponse(BaseModel):
+    claim_id: str
+    report_text: str
+    generated_at: str
+    model_used: str
+    token_usage: TokenUsage
+    generation_status: str
+
+
+# ── Authentication Schemas ───────────────────────────────────────────────────
+class RegisterSchema(BaseModel):
+    email: str
+    password: str
+    full_name: str = ""
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, v):
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("Invalid email format")
+        return v.lower().strip()
+
+    @field_validator("password")
+    @classmethod
+    def strong_password(cls, v):
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
+
+
+class LoginSchema(BaseModel):
+    email: str
+    password: str
+
+
+class GoogleTokenSchema(BaseModel):
+    id_token: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_email: str
+    user_role: str
+    user_name: str
+
+
+class UserProfileResponse(BaseModel):
+    id: int
+    email: str
+    full_name: str | None
+    role: str
+    auth_provider: str
+    is_active: bool
+
+
+# ── Hospital-Level Loss Exposure (Hitha's Feature) ───────────────────────────
+class HospitalLossItem(BaseModel):
+    hospital_id: str
+    total_claims: int
+    high_risk_claims: int
+    total_claim_amount: float
+    risk_weighted_loss: float
+    fraud_exposure_percentage: float
+
+HospitalLossResponse = List[HospitalLossItem]
+

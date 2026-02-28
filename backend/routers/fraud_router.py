@@ -180,9 +180,49 @@ def score_intelligence(
         raise HTTPException(status_code=500, detail="Internal scoring error. No data was persisted.")
 
 
+@router.get("/intelligence/{claim_id}", response_model=IntelligenceResponse)
+def get_intelligence_by_claim(claim_id: str, db: Session = Depends(get_db)):
+    """
+    Fetch stored intelligence result for an already-scored claim.
+    Used by the Dataset Explorer to view intelligence results without re-scoring.
+    """
+    claim = crud.get_claim_by_id(db, claim_id)
+    if not claim:
+        raise HTTPException(status_code=404, detail=f"Claim '{claim_id}' not found.")
+
+    analysis = crud.get_fraud_analysis_by_claim_id(db, claim_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail=f"No fraud analysis found for claim '{claim_id}'.")
+
+    return IntelligenceResponse(
+        claim_id=claim_id,
+        hospital_name=claim.hospital_name,
+        patient_name=claim.patient_name,
+        anomaly_score_norm=analysis.anomaly_score_norm,
+        rule_score_norm=analysis.rule_score_norm,
+        final_risk_score=analysis.final_risk_score,
+        risk_level=analysis.risk_level,
+        risk_breakdown=analysis.risk_breakdown,
+        rule_triggers=analysis.rule_triggers,
+        fraud_pattern_detected=analysis.fraud_pattern_detected,
+        investigation_priority=analysis.investigation_priority,
+        explanation=analysis.explanation,
+        composite_index=analysis.composite_index or 0,
+        threat_level=analysis.threat_level or "LOW",
+        confidence_score=analysis.confidence_score or 0,
+        enforcement_state=analysis.enforcement_state or "CLEAR",
+        signal_vector=analysis.signal_vector or {
+            "rule_weight": 0.0, "anomaly_weight": 0.0,
+            "rule_trigger_count": 0, "anomaly_intensity_band": "Mild Deviation"
+        },
+        knowledge_signals=analysis.knowledge_signals or [],
+    )
+
+
 @router.get("/intelligence-metrics", response_model=IntelligenceMetricsResponse)
 def intelligence_metrics(db: Session = Depends(get_db)):
     return crud.get_intelligence_metrics(db)
+
 
 
 @router.get("/dataset-summary")

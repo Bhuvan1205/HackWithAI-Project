@@ -47,13 +47,44 @@ _RULE_META = {
 }
 
 
-def _get_rule_triggers(row: pd.Series) -> dict:
+def _get_rule_triggers(row: pd.Series, db=None) -> dict:
+    """
+    Evaluate all deterministic fraud rules.
+    Thresholds and enabled-state are read from the RuleConfig DB table.
+    Falls back to hardcoded defaults if DB is unavailable.
+    """
+    rule_map = {}
+    if db is not None:
+        try:
+            from backend import crud as _crud
+            rule_map = _crud.get_rule_config_map(db)
+        except Exception:
+            pass
+
+    def _threshold(key: str, default: float) -> float:
+        r = rule_map.get(key)
+        return r.threshold_value if (r and r.threshold_value is not None) else default
+
+    def _enabled(key: str) -> bool:
+        r = rule_map.get(key)
+        return r.is_enabled if r is not None else True
+
     return {
-        "zero_day_inpatient": bool(row["is_zero_day_stay"] == 1 and row["is_inpatient"] == 1),
-        "high_amount_zscore": bool(row["claim_amount_zscore"] > 2.0),
-        "repeat_procedure_flag": bool(row["same_proc_repeat_flag"] == 1),
-        "near_package_ceiling": bool(row["claim_to_package_ratio"] > 0.95),
-        "high_patient_frequency": bool(row["patient_claim_freq_30d"] >= 3),
+        "zero_day_inpatient": _enabled("zero_day_inpatient") and bool(
+            row["is_zero_day_stay"] == 1 and row["is_inpatient"] == 1
+        ),
+        "high_amount_zscore": _enabled("high_amount_zscore") and bool(
+            row["claim_amount_zscore"] > _threshold("high_amount_zscore", 2.0)
+        ),
+        "repeat_procedure_flag": _enabled("repeat_procedure_flag") and bool(
+            row["same_proc_repeat_flag"] == 1
+        ),
+        "near_package_ceiling": _enabled("near_package_ceiling") and bool(
+            row["claim_to_package_ratio"] > _threshold("near_package_ceiling", 0.95)
+        ),
+        "high_patient_frequency": _enabled("high_patient_frequency") and bool(
+            row["patient_claim_freq_30d"] >= _threshold("high_patient_frequency", 3.0)
+        ),
     }
 
 
@@ -97,12 +128,26 @@ def _compute_composite_index(final_risk_score: float) -> int:
     return min(100, max(0, round(final_risk_score * 100)))
 
 
-def _classify_threat_level(composite_index: int) -> str:
-    if composite_index <= 29:
+def _classify_threat_level(composite_index: int, db=None) -> str:
+    """
+    Classify threat level using DB-configured bands.
+    Falls back to hardcoded defaults (29/59/84) if DB unavailable.
+    """
+    low_max, medium_max, high_max = 29, 59, 84
+    if db is not None:
+        try:
+            from backend import crud as _crud
+            cfg = _crud.get_config_map(db)
+            low_max = int(cfg.get("LOW_MAX", 29))
+            medium_max = int(cfg.get("MEDIUM_MAX", 59))
+            high_max = int(cfg.get("HIGH_MAX", 84))
+        except Exception:
+            pass
+    if composite_index <= low_max:
         return "LOW"
-    elif composite_index <= 59:
+    elif composite_index <= medium_max:
         return "MEDIUM"
-    elif composite_index <= 84:
+    elif composite_index <= high_max:
         return "HIGH"
     return "CRITICAL"
 
@@ -180,6 +225,9 @@ def _compute_enforcement_state(threat_level: str, confidence_score: int) -> str:
         return "MONITOR"
     if threat_level == "HIGH":
         return "ESCALATED"
+    # CRITICAL
+    return "HARD_STOP"
+
 
 
 # ── 8. Enhanced Explanation Engine ──────────────────────────────────────────
@@ -250,7 +298,9 @@ def score_claim_intelligence(claim_data: dict, db: Session, engine: FraudEngine)
     crud.insert_claim(db, {
         "claim_id": claim_data["claim_id"],
         "hospital_id": claim_data["hospital_id"],
+        "hospital_name": claim_data.get("hospital_name"),
         "patient_id": claim_data["patient_id"],
+        "patient_name": claim_data.get("patient_name"),
         "procedure_code": claim_data["procedure_code"],
         "package_rate": claim_data["package_rate"],
         "claim_amount": claim_data["claim_amount"],
@@ -263,7 +313,9 @@ def score_claim_intelligence(claim_data: dict, db: Session, engine: FraudEngine)
     new_row = pd.DataFrame([{
         "claim_id": claim_data["claim_id"],
         "hospital_id": claim_data["hospital_id"],
+        "hospital_name": claim_data.get("hospital_name"),
         "patient_id": claim_data["patient_id"],
+        "patient_name": claim_data.get("patient_name"),
         "procedure_code": claim_data["procedure_code"],
         "package_rate": claim_data["package_rate"],
         "claim_amount": claim_data["claim_amount"],
@@ -281,14 +333,14 @@ def score_claim_intelligence(claim_data: dict, db: Session, engine: FraudEngine)
     final = scores["final_risk_score"]
     risk_level = scores["risk_level"]
 
-    triggers = _get_rule_triggers(feat_row)
+    triggers = _get_rule_triggers(feat_row, db)
     pattern = _detect_fraud_pattern(triggers)
     priority = _investigation_priority(risk_level)
     breakdown = _risk_breakdown(r_norm, a_norm)
 
     # Composite Intelligence Layer
     composite_index = _compute_composite_index(final)
-    threat_level = _classify_threat_level(composite_index)
+    threat_level = _classify_threat_level(composite_index, db)
     claim_amount_zscore = float(feat_row.get("claim_amount_zscore", 0.0))
     confidence_score = _compute_confidence(a_norm, triggers, claim_amount_zscore)
     signal_vector = _build_signal_vector(r_norm, a_norm, triggers)
@@ -301,7 +353,7 @@ def score_claim_intelligence(claim_data: dict, db: Session, engine: FraudEngine)
         logger.critical(f"Integrity Error: composite_index={composite_index}, final={final}")
         raise RuntimeError("COMPUTATION_INTEGRITY_MISMATCH: composite_index")
     
-    expected_threat = _classify_threat_level(composite_index)
+    expected_threat = _classify_threat_level(composite_index, db)
     if threat_level != expected_threat:
         logger.critical(f"Integrity Error: threat_level={threat_level}, expected={expected_threat}")
         raise RuntimeError("COMPUTATION_INTEGRITY_MISMATCH: threat_level")

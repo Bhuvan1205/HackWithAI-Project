@@ -81,3 +81,22 @@ class FraudEngine:
             "risk_level": classify_risk(final),
             "feat_row": feat_row,
         }
+
+
+def get_fraud_engine() -> FraudEngine:
+    """
+    Factory function that creates and loads a FraudEngine instance.
+    Used by seed_demo_entities and other callers that need a standalone engine
+    (outside the FastAPI app.state lifecycle).
+    """
+    engine = FraudEngine()
+    try:
+        engine.load()
+    except RuntimeError as exc:
+        import logging
+        logging.getLogger("risk_engine").warning(
+            "get_fraud_engine: model artifacts not available (%s). "
+            "Engine will operate in degraded mode.", exc
+        )
+    return engine
+

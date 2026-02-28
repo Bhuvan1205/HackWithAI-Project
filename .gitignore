@@ -13,3 +13,5 @@ uvicorn_logs.log
 server.log
 intelligence_debug.jsonl
 response.json
+hitha feature/
+data/models/
