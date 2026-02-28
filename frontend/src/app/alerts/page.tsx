@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { motion } from "framer-motion"
-import { ShieldAlert, Fingerprint, Network, Clock, CheckCircle2, ChevronRight, Activity, XOctagon, AlertCircle } from "lucide-react"
+import { ShieldAlert, Fingerprint, Network, Clock, CheckCircle2, ChevronRight, Activity, XOctagon, AlertCircle, FileText, Loader2, X, Building2, User } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import { PageTransition } from "@/components/layout/page-transition"
@@ -42,9 +42,45 @@ function FlagshipIntelligenceScreenContent() {
   const searchParams = useSearchParams()
   const claimIdParam = searchParams.get('id') || 'UNKNOWN'
 
-  const { setActiveHighRiskAlert, latestIntelligenceResult } = useAppStore()
+  const { setActiveHighRiskAlert, latestIntelligenceResult, setLatestIntelligenceResult } = useAppStore()
   const [mounted, setMounted] = React.useState(false)
   const [devMode, setDevMode] = React.useState(false)
+  const [reportLoading, setReportLoading] = React.useState(false)
+  const [reportText, setReportText] = React.useState<string | null>(null)
+  const [reportError, setReportError] = React.useState<string | null>(null)
+  const [fetchingResult, setFetchingResult] = React.useState(false)
+  const [fetchError, setFetchError] = React.useState<string | null>(null)
+
+  const handleGenerateReport = async () => {
+    if (!res) return
+    setReportLoading(true)
+    setReportError(null)
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/v1/generate-report/${res.claim_id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User-Role": "AUDITOR" },
+      })
+      if (response.status === 503) {
+        setReportError("Report generation service temporarily unavailable (LLM offline).")
+        return
+      }
+      if (response.status === 403) {
+        setReportError("Unauthorized: Insufficient role for report generation.")
+        return
+      }
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        setReportError(err?.detail || "Report generation failed.")
+        return
+      }
+      const data = await response.json()
+      setReportText(data.report_text)
+    } catch (e: any) {
+      setReportError(e.message || "Network error during report generation.")
+    } finally {
+      setReportLoading(false)
+    }
+  }
 
   React.useEffect(() => {
     setMounted(true)
@@ -52,7 +88,48 @@ function FlagshipIntelligenceScreenContent() {
     return () => setActiveHighRiskAlert(false)
   }, [setActiveHighRiskAlert])
 
+  // Auto-fetch from DB if arriving directly from Dataset Explorer
+  React.useEffect(() => {
+    if (mounted && !latestIntelligenceResult && claimIdParam !== 'UNKNOWN') {
+      setFetchingResult(true)
+      setFetchError(null)
+      fetch(`http://127.0.0.1:8000/api/v1/intelligence/${claimIdParam}`)
+        .then(res => {
+          if (!res.ok) throw new Error(`No analysis found for claim ${claimIdParam}`)
+          return res.json()
+        })
+        .then(data => setLatestIntelligenceResult(data))
+        .catch(e => setFetchError(e.message))
+        .finally(() => setFetchingResult(false))
+    }
+  }, [mounted, latestIntelligenceResult, claimIdParam, setLatestIntelligenceResult])
+
   if (!mounted) return null
+
+  // Loading state while fetching from DB
+  if (fetchingResult) {
+    return (
+      <div className="flex flex-col h-[50vh] w-full items-center justify-center p-8 text-center space-y-4">
+        <div className="h-12 w-12 rounded-full border border-accent/40 bg-accent/10 flex items-center justify-center animate-pulse">
+          <Activity size={24} className="text-accent" />
+        </div>
+        <h2 className="text-xl font-bold tracking-widest text-accent uppercase">Loading Intelligence Result</h2>
+        <p className="text-[var(--text-secondary)] font-mono text-sm">Fetching stored analysis for {claimIdParam}...</p>
+      </div>
+    )
+  }
+
+  // Error: claim not found in DB
+  if (fetchError) {
+    return (
+      <div className="flex flex-col h-[50vh] w-full items-center justify-center p-8 text-center space-y-4">
+        <XOctagon size={48} className="text-[#FF3B30] glow-red" />
+        <h2 className="text-2xl font-bold tracking-widest text-[#FF3B30] uppercase">Claim Not Found</h2>
+        <p className="text-[var(--text-secondary)]">{fetchError}</p>
+        <p className="text-xs text-[var(--text-secondary)] font-mono">Claim ID: {claimIdParam}</p>
+      </div>
+    )
+  }
 
   // 10. FRONTEND DATA VALIDATION CHECK + 12. LOADING/DEGRADED STATE
   if (!latestIntelligenceResult) {
@@ -61,7 +138,7 @@ function FlagshipIntelligenceScreenContent() {
       <div className="flex flex-col h-[50vh] w-full items-center justify-center p-8 text-center space-y-4">
         <XOctagon size={48} className="text-[#FF3B30] glow-red" />
         <h2 className="text-2xl font-bold tracking-widest text-[#FF3B30] uppercase">⚠ Intelligence Engine Offline</h2>
-        <p className="text-slate-400">Scoring temporarily unavailable or payload missing.</p>
+        <p className="text-[var(--text-secondary)]">Scoring temporarily unavailable or payload missing.</p>
         <Button variant="outline" className="mt-4 border-slate-700" disabled>Action Disabled</Button>
       </div>
     )
@@ -158,7 +235,7 @@ function FlagshipIntelligenceScreenContent() {
       {devMode && (
         <Card className="glass-panel border-accent p-4 mb-4">
           <CardTitle className="text-xs text-accent font-mono mb-2">RAW JSON PAYLOAD</CardTitle>
-          <pre className="text-[10px] font-mono text-slate-300 whitespace-pre-wrap break-words">{JSON.stringify(res, null, 2)}</pre>
+          <pre className="text-[10px] font-mono text-[var(--text-secondary)] whitespace-pre-wrap break-words">{JSON.stringify(res, null, 2)}</pre>
         </Card>
       )}
 
@@ -181,15 +258,31 @@ function FlagshipIntelligenceScreenContent() {
 
           <CardContent className="p-8 relative z-10 flex flex-col md:flex-row gap-8 items-center md:items-start justify-between">
             <div className="space-y-4 max-w-2xl">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <Badge variant="outline" className={cn("text-sm px-3 py-1 gap-2 border-[1.5px] font-bold", themeColor, themeBorder)}>
                   {isSevere ? <XOctagon size={16} /> : <AlertCircle size={16} />} {threatTitle}
                 </Badge>
-                <span className="text-slate-400 font-mono text-sm">ID: {res.claim_id}</span>
+                <div className="flex flex-col">
+                  <span className="text-[var(--text-secondary)] font-mono text-xs uppercase tracking-widest">Trace Token: {res.claim_id}</span>
+                  {(res.hospital_name || res.patient_name) && (
+                    <div className="flex gap-4 mt-1">
+                      {res.hospital_name && (
+                        <span className="text-[var(--accent-color)] font-bold text-[10px] uppercase tracking-wider flex items-center gap-1">
+                          <Building2 size={10} /> {res.hospital_name}
+                        </span>
+                      )}
+                      {res.patient_name && (
+                        <span className="text-[var(--text-primary)] font-bold text-[10px] uppercase tracking-wider flex items-center gap-1">
+                          <User size={10} /> {res.patient_name}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-              <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-white uppercase">{headerText}</h1>
+              <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-[var(--text-primary)] uppercase">{headerText}</h1>
               <p className={cn("text-lg font-medium tracking-wide", themeColor)}>
-                Priority: <span className="text-white font-bold ml-1 tracking-normal">{priorityText}</span>
+                Priority: <span className="text-[var(--text-primary)] font-bold ml-1 tracking-normal">{priorityText}</span>
               </p>
             </div>
 
@@ -211,7 +304,7 @@ function FlagshipIntelligenceScreenContent() {
                   initial={{ opacity: 0, scale: 0.5 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.5, delay: 1 }}
-                  className="text-5xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.5)] tracking-tighter"
+                  className="text-5xl font-black text-[var(--text-primary)] drop-shadow-[0_0_10px_rgba(255,255,255,0.5)] tracking-tighter"
                 >
                   {compositeIndex}
                 </motion.span>
@@ -234,7 +327,7 @@ function FlagshipIntelligenceScreenContent() {
                 <Fingerprint size={20} />
               </div>
               <div>
-                <CardTitle className="text-xl tracking-tight font-bold text-white">{headerText}</CardTitle>
+                <CardTitle className="text-xl tracking-tight font-bold text-[var(--text-primary)]">{headerText}</CardTitle>
                 <p className={cn("text-sm font-medium tracking-wide flex items-center gap-2 mt-1", themeColor)}>
                   Model Signal Strength: {modelSignalStrength}% <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", themeBg)} />
                 </p>
@@ -243,21 +336,21 @@ function FlagshipIntelligenceScreenContent() {
             <CardContent className="relative z-10 space-y-4 pt-4">
 
               <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="bg-black/40 p-3 rounded border border-white/5 text-center">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Rule Norm</p>
-                  <p className="font-mono text-white text-lg mt-1">{ruleNorm.toFixed(3)}</p>
+                <div className="bg-[var(--text-primary)]/5 p-3 rounded border border-[var(--border-color)] text-center">
+                  <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-widest font-bold">Rule Norm</p>
+                  <p className="font-mono text-[var(--text-primary)] text-lg mt-1">{ruleNorm.toFixed(3)}</p>
                 </div>
-                <div className="bg-black/40 p-3 rounded border border-white/5 text-center">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Anomaly Norm</p>
-                  <p className="font-mono text-white text-lg mt-1">{anomalyNorm.toFixed(3)}</p>
+                <div className="bg-[var(--text-primary)]/5 p-3 rounded border border-[var(--border-color)] text-center">
+                  <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-widest font-bold">Anomaly Norm</p>
+                  <p className="font-mono text-[var(--text-primary)] text-lg mt-1">{anomalyNorm.toFixed(3)}</p>
                 </div>
-                <div className="bg-black/40 p-3 rounded border border-white/5 text-center">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Final Risk</p>
+                <div className="bg-[var(--text-primary)]/5 p-3 rounded border border-[var(--border-color)] text-center">
+                  <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-widest font-bold">Final Risk</p>
                   <p className={cn("font-mono text-lg mt-1 font-bold", themeColor)}>{(res.final_risk_score || 0).toFixed(3)}</p>
                 </div>
               </div>
 
-              <p className="text-slate-300 leading-relaxed text-sm">
+              <p className="text-[var(--text-secondary)] leading-relaxed text-sm">
                 {res.explanation || "No specialized explanation generated by the backend."}
               </p>
             </CardContent>
@@ -265,24 +358,24 @@ function FlagshipIntelligenceScreenContent() {
 
           {/* 5. DETERMINISTIC RULES ACCORDION */}
           {!isLow && activeRules.length > 0 && (
-            <Card className="glass-panel">
+            <Card variant="glass">
               <CardHeader>
-                <CardTitle className="text-sm tracking-widest text-slate-400 uppercase flex items-center gap-2">
-                  <Network size={16} className="text-accent" /> Base Knowledge Graph Triggers
+                <CardTitle className="text-sm tracking-widest text-[var(--text-secondary)] uppercase flex items-center gap-2">
+                  <Network size={16} className="text-[var(--accent-color)]" /> Base Knowledge Graph Triggers
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <Accordion type="single" collapsible className="w-full">
                   {activeRules.map(([ruleKey], idx) => (
-                    <AccordionItem key={ruleKey} value={`item-${idx}`} className="border-b border-white/5 data-[state=open]:bg-white/5 transition-colors">
-                      <AccordionTrigger className="hover:no-underline hover:text-white group">
+                    <AccordionItem key={ruleKey} value={`item-${idx}`} className="border-b border-[var(--border-color)] data-[state=open]:bg-[var(--text-primary)]/5 transition-colors">
+                      <AccordionTrigger className="hover:no-underline hover:text-[var(--text-primary)] group">
                         <div className="flex items-center gap-3 text-left">
-                          <span className="h-2 w-2 rounded-full bg-accent glow-accent" />
-                          <span className="font-semibold text-slate-200 group-hover:text-white font-mono text-sm">{RULE_LABELS[ruleKey] || ruleKey}</span>
+                          <span className="h-2 w-2 rounded-full bg-[var(--accent-color)] shadow-[0_0_10px_var(--accent-color)]" />
+                          <span className="font-semibold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] font-mono text-sm">{RULE_LABELS[ruleKey] || ruleKey}</span>
                         </div>
                       </AccordionTrigger>
-                      <AccordionContent className="pl-9 pt-2 pb-4 text-slate-400 leading-relaxed text-sm">
-                        <div className="p-3 bg-black/40 border-l-[3px] border-accent text-sm">
+                      <AccordionContent className="pl-9 pt-2 pb-4 text-[var(--text-secondary)] leading-relaxed text-sm">
+                        <div className="p-3 bg-[var(--text-primary)]/5 border-l-[3px] border-[var(--accent-color)] text-sm">
                           Feature explicitly triggered based on backend knowledge graph logic.
                         </div>
                       </AccordionContent>
@@ -293,6 +386,88 @@ function FlagshipIntelligenceScreenContent() {
             </Card>
           )}
 
+          {/* 5.1. Signal Data Card (moved from original position) */}
+          {!isLow && (
+            <Card variant="glass">
+              <CardHeader>
+                <CardTitle className="text-lg tracking-tight font-bold text-[var(--text-primary)] uppercase flex items-center gap-2">
+                  <Activity size={18} className={themeColor} /> Signal Data
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {Object.entries(res.feature_values || {}).map(([key, value]) => (
+                    <div key={key} className="flex justify-between items-center py-2 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--text-primary)]/5 px-2 rounded transition-colors -mx-2">
+                      <span className="text-xs tracking-wider font-semibold text-[var(--text-secondary)] uppercase">{key.replace(/_/g, ' ')}</span>
+                      <span className="font-mono text-sm text-[var(--text-primary)]">{typeof value === 'number' ? value.toFixed(2) : String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 6. LLM AI INVESTIGATION TOOL */}
+          <div className="pt-4 flex flex-col items-start gap-4">
+            <Button
+              onClick={handleGenerateReport}
+              disabled={reportLoading}
+              className={cn(
+                "px-6 py-4 h-auto text-sm font-bold uppercase tracking-widest transition-all duration-300 rounded-xl",
+                "bg-accent hover:bg-accent/80 text-white glow-accent border border-accent/50",
+                reportLoading && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              {reportLoading ? (
+                <><Loader2 className="mr-3 h-5 w-5 animate-spin" /> Analyzing with Claim Hawk AI...</>
+              ) : (
+                <><FileText className="mr-3 h-5 w-5" /> Explain with Claim Hawk AI</>
+              )}
+            </Button>
+            {reportError && (
+              <p className="text-sm text-[#FF3B30] font-mono px-2">{reportError}</p>
+            )}
+
+            {reportText && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                className="w-full mt-2"
+              >
+                <Card className="glass-panel-heavy border-accent/30 flex flex-col shadow-[0_4px_30px_rgba(124,58,237,0.15)] relative overflow-hidden">
+                  <div className="scan-line absolute inset-0 z-0 opacity-20 pointer-events-none" />
+                  <CardHeader className="flex flex-row items-center gap-3 border-b border-white/10 pb-4 relative z-10 bg-accent/5">
+                    <div className="h-8 w-8 rounded border border-accent/50 bg-accent/20 flex items-center justify-center text-accent glow-accent">
+                      <FileText size={16} />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg tracking-tight font-bold text-[var(--text-primary)] uppercase">AI Analysis Report</CardTitle>
+                      <p className="text-xs text-[var(--text-secondary)] font-mono">Generated by Claim Hawk Intelligence</p>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6 relative z-10">
+                    <div className="prose prose-invert prose-sm max-w-none
+           [&_h2]:text-[var(--accent-color)] [&_h2]:text-sm [&_h2]:uppercase [&_h2]:tracking-widest [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:border-b [&_h2]:border-[var(--border-color)] [&_h2]:pb-2
+           [&_h3]:text-[var(--text-primary)] [&_h3]:text-xs [&_h3]:uppercase [&_h3]:tracking-wider [&_h3]:font-semibold [&_h3]:mt-4
+           [&_p]:text-[var(--text-secondary)] [&_p]:leading-relaxed [&_p]:text-sm
+           [&_strong]:text-[var(--text-primary)]
+           [&_ul]:text-[var(--text-secondary)] [&_ul]:text-sm
+           [&_li]:text-[var(--text-secondary)] [&_li]:text-sm
+          ">
+                      {reportText.split('\n').map((line, i) => {
+                        if (line.startsWith('## ')) return <h2 key={i}>{line.replace('## ', '')}</h2>
+                        if (line.startsWith('### ')) return <h3 key={i}>{line.replace('### ', '')}</h3>
+                        if (line.startsWith('**') && line.endsWith('**')) return <p key={i}><strong>{line.replace(/\*\*/g, '')}</strong></p>
+                        if (line.startsWith('- ')) return <li key={i}>{line.replace('- ', '')}</li>
+                        if (line.trim() === '') return <br key={i} />
+                        return <p key={i}>{line}</p>
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </div>
         </div>
 
         {/* Right Column: Graphs & Timeline */}
@@ -302,7 +477,7 @@ function FlagshipIntelligenceScreenContent() {
           {hasBreakdownData ? (
             <Card className="glass-panel">
               <CardHeader className="pb-0">
-                <CardTitle className="text-sm tracking-widest text-slate-400 uppercase text-center">Risk Signal Assembly</CardTitle>
+                <CardTitle className="text-sm tracking-widest text-[var(--text-secondary)] uppercase text-center">Risk Signal Assembly</CardTitle>
               </CardHeader>
               <CardContent className="h-64 flex flex-col justify-center items-center relative">
                 <ResponsiveContainer width="100%" height="100%">
@@ -328,85 +503,85 @@ function FlagshipIntelligenceScreenContent() {
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col mt-4">
-                  <Network className="text-slate-400 h-8 w-8 mb-1" />
+                  <Network className="text-[var(--text-secondary)] h-8 w-8 mb-1" />
                 </div>
               </CardContent>
               <div className="px-6 pb-6 mt-4 pt-0 flex justify-between gap-4">
                 {donutData.map(d => (
                   <div key={d.name} className="flex-1 text-center">
                     <div className="h-1 w-full rounded-full mb-2 opacity-50" style={{ backgroundColor: d.color }} />
-                    <p className="text-[9px] uppercase font-bold tracking-wider text-white truncate">{d.name}</p>
-                    <p className="text-xs text-slate-400">{d.value}%</p>
+                    <p className="text-[9px] uppercase font-bold tracking-wider text-[var(--text-primary)] truncate">{d.name}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">{d.value}%</p>
                   </div>
                 ))}
               </div>
             </Card>
           ) : (
-            <Card className="glass-panel opacity-50 border-dashed border-slate-700">
+            <Card className="glass-panel opacity-50 border-dashed border-[var(--border-color)]">
               <CardContent className="h-64 flex flex-col justify-center items-center text-center p-6 space-y-4">
-                <ShieldAlert size={32} className="text-slate-500" />
-                <p className="text-sm text-slate-400">Risk breakdown telemetry unavailable or insufficient for assembly.</p>
+                <ShieldAlert size={32} className="text-[var(--text-secondary)]" />
+                <p className="text-sm text-[var(--text-secondary)]">Risk breakdown telemetry unavailable or insufficient for assembly.</p>
               </CardContent>
             </Card>
           )}
 
           {/* 7. INVESTIGATION TIMELINE */}
-          <Card className="glass-panel-heavy flex-1">
+          <Card variant="glass" className="flex-1">
             <CardHeader className="pb-4">
-              <CardTitle className="text-sm tracking-widest text-slate-400 uppercase flex items-center gap-2">
+              <CardTitle className="text-sm tracking-widest text-[var(--text-secondary)] uppercase flex items-center gap-2">
                 <Clock size={16} /> Audit Trail
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="relative border-l border-white/10 ml-3 space-y-8 pb-4">
+              <div className="relative border-l border-[var(--border-color)] ml-3 space-y-8 pb-4">
 
                 {isCritical && (
                   <div className="relative pl-6">
-                    <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-[#ef4444] glow-red animate-pulse-red" />
-                    <p className="text-xs text-slate-500 font-mono mb-1">{mounted ? new Date().toLocaleTimeString() : '--:--:--'} - Today</p>
-                    <p className="text-sm font-semibold text-white">Hard-stop activated</p>
-                    <p className="text-xs text-slate-400 mt-1">Pending mandatory manual investigator review.</p>
+                    <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-[var(--intel-danger)] glow-red animate-pulse-red" />
+                    <p className="text-xs text-[var(--text-secondary)] font-mono mb-1">{mounted ? new Date().toLocaleTimeString() : '--:--:--'} - Today</p>
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">Hard-stop activated</p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">Pending mandatory manual investigator review.</p>
                   </div>
                 )}
 
                 {isHigh && (
                   <div className="relative pl-6">
-                    <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-[#ef4444] glow-red animate-pulse-red" />
-                    <p className="text-xs text-slate-500 font-mono mb-1">{mounted ? new Date().toLocaleTimeString() : '--:--:--'} - Today</p>
-                    <p className="text-sm font-semibold text-white">Escalated</p>
-                    <p className="text-xs text-slate-400 mt-1">Pending priority investigator review.</p>
+                    <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-[var(--intel-danger)] glow-red animate-pulse-red" />
+                    <p className="text-xs text-[var(--text-secondary)] font-mono mb-1">{mounted ? new Date().toLocaleTimeString() : '--:--:--'} - Today</p>
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">Escalated</p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">Pending priority investigator review.</p>
                   </div>
                 )}
 
                 {isMedium && (
                   <div className="relative pl-6">
                     <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-[#f59e0b] glow-amber" />
-                    <p className="text-xs text-slate-500 font-mono mb-1">{mounted ? new Date().toLocaleTimeString() : '--:--:--'} - Today</p>
-                    <p className="text-sm font-semibold text-white">Review Tag Added</p>
-                    <p className="text-xs text-slate-400 mt-1">Flagged for standard compliance queuing.</p>
+                    <p className="text-xs text-[var(--text-secondary)] font-mono mb-1">{mounted ? new Date().toLocaleTimeString() : '--:--:--'} - Today</p>
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">Review Tag Added</p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">Flagged for standard compliance queuing.</p>
                   </div>
                 )}
 
                 {isLow && (
                   <div className="relative pl-6">
                     <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-[#10b981] glow-green" />
-                    <p className="text-xs text-slate-500 font-mono mb-1">{mounted ? new Date().toLocaleTimeString() : '--:--:--'} - Today</p>
-                    <p className="text-sm font-semibold text-white">Auto-Approved</p>
-                    <p className="text-xs text-slate-400 mt-1">Claim passed intelligence checks. Processing scheduled.</p>
+                    <p className="text-xs text-[var(--text-secondary)] font-mono mb-1">{mounted ? new Date().toLocaleTimeString() : '--:--:--'} - Today</p>
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">Auto-Approved</p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">Claim passed intelligence checks. Processing scheduled.</p>
                   </div>
                 )}
 
                 <div className="relative pl-6">
                   <span className={cn("absolute -left-[5px] top-1 h-2 w-2 rounded-full", themeGlow, themeBg)} />
-                  <p className="text-xs text-slate-500 font-mono mb-1">{mounted ? new Date(Date.now() - 2000).toLocaleTimeString() : '--:--:--'} - Today</p>
-                  <p className="text-sm font-semibold text-white">Algorithms Intercepted Payload</p>
-                  <p className="text-xs text-slate-400 mt-1">Calculated final risk score of {(res.final_risk_score || 0).toFixed(4)}</p>
+                  <p className="text-xs text-[var(--text-secondary)] font-mono mb-1">{mounted ? new Date(Date.now() - 2000).toLocaleTimeString() : '--:--:--'} - Today</p>
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Algorithms Intercepted Payload</p>
+                  <p className="text-xs text-[var(--text-secondary)] mt-1">Calculated final risk score of {(res.final_risk_score || 0).toFixed(4)}</p>
                 </div>
 
                 <div className="relative pl-6 opacity-60">
                   <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-[#34C759]" />
-                  <p className="text-xs text-slate-500 font-mono mb-1">{mounted ? new Date(Date.now() - 5000).toLocaleTimeString() : '--:--:--'} - Today</p>
-                  <p className="text-sm font-semibold text-white">API Gateway Received Claim</p>
+                  <p className="text-xs text-[var(--text-secondary)] font-mono mb-1">{mounted ? new Date(Date.now() - 5000).toLocaleTimeString() : '--:--:--'} - Today</p>
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">API Gateway Received Claim</p>
                 </div>
 
               </div>
@@ -414,6 +589,9 @@ function FlagshipIntelligenceScreenContent() {
           </Card>
         </div>
       </div>
+
+
+
     </PageTransition>
   )
 }

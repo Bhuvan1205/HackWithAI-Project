@@ -7,6 +7,7 @@ import {
   BarChart, Bar, Cell,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from "recharts"
+import { useTheme } from "next-themes"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 
 const volumeData = [
@@ -37,8 +38,8 @@ const radarData = [
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-slate-900/90 border border-white/10 p-3 rounded-lg shadow-xl backdrop-blur-md">
-        <p className="text-slate-300 text-xs mb-2 tracking-wider font-semibold">{label}</p>
+      <div className="bg-[var(--bg-secondary)]/90 border border-[var(--border-color)] p-3 rounded-lg shadow-xl backdrop-blur-md">
+        <p className="text-[var(--text-primary)] text-xs mb-2 tracking-wider font-semibold">{label}</p>
         {payload.map((entry: any, index: number) => (
           <p key={index} className="text-sm font-medium" style={{ color: entry.color }}>
             {entry.name}: {entry.value}
@@ -51,10 +52,16 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 }
 
 export function ClaimVolumeChart() {
+  const { theme, systemTheme } = useTheme();
+  const currentTheme = theme === "system" ? systemTheme : theme;
+  const isDark = currentTheme === "dark" || !currentTheme;
+  const gridColor = isDark ? "#ffffff10" : "#e2e8f0";
+  const axisColor = isDark ? "#ffffff40" : "#94a3b8";
+
   return (
     <Card className="h-[350px] flex flex-col glow-blue hover:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition-all duration-500">
       <CardHeader>
-        <CardTitle className="text-sm tracking-widest uppercase text-slate-400">Claim Volume Timeline</CardTitle>
+        <CardTitle className="text-sm tracking-widest uppercase text-[var(--text-secondary)]">Claim Volume Timeline</CardTitle>
       </CardHeader>
       <CardContent className="flex-1 min-h-0 pb-6">
         <ResponsiveContainer width="100%" height="100%">
@@ -69,10 +76,10 @@ export function ClaimVolumeChart() {
                 <stop offset="95%" stopColor="#7C3AED" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-            <XAxis dataKey="name" stroke="#ffffff40" fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis stroke="#ffffff40" fontSize={12} tickLine={false} axisLine={false} />
-            <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#ffffff20', strokeWidth: 1 }} />
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+            <XAxis dataKey="name" stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <YAxis stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <Tooltip content={<CustomTooltip />} cursor={{ stroke: gridColor, strokeWidth: 1 }} />
             <Area type="monotone" dataKey="claims" name="Total Claims" stroke="#3B82F6" strokeWidth={2} fillOpacity={1} fill="url(#colorClaims)" />
             <Area type="monotone" dataKey="anomalies" name="Flagged Anomalies" stroke="#7C3AED" strokeWidth={2} fillOpacity={1} fill="url(#colorAnomalies)" />
           </AreaChart>
@@ -82,21 +89,34 @@ export function ClaimVolumeChart() {
   )
 }
 
-export function RiskDistributionChart() {
+export function RiskDistributionChart({ data, loading }: { data?: any, loading?: boolean }) {
+  const { theme, systemTheme } = useTheme();
+  const currentTheme = theme === "system" ? systemTheme : theme;
+  const isDark = currentTheme === "dark" || !currentTheme;
+  const gridColor = isDark ? "#ffffff10" : "#e2e8f0";
+  const axisColor = isDark ? "#ffffff40" : "#94a3b8";
+
+  const chartData = loading || !data ? riskDistributionData : [
+    { name: 'Low', value: data.LOW || 0, color: '#34C759' },
+    { name: 'Medium', value: data.MEDIUM || 0, color: '#FF9F0A' },
+    { name: 'High', value: data.HIGH || 0, color: '#FF3B30' },
+    { name: 'Critical', value: data.CRITICAL || 0, color: '#7C3AED' },
+  ]
+
   return (
     <Card className="h-[350px] flex flex-col glow-amber hover:shadow-[0_0_20px_rgba(255,159,10,0.1)] transition-all duration-500">
       <CardHeader>
-        <CardTitle className="text-sm tracking-widest uppercase text-slate-400">Risk Distribution</CardTitle>
+        <CardTitle className="text-sm tracking-widest uppercase text-[var(--text-secondary)]">Risk Distribution</CardTitle>
       </CardHeader>
       <CardContent className="flex-1 min-h-0 pb-6">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={riskDistributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-            <XAxis dataKey="name" stroke="#ffffff40" fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis stroke="#ffffff40" fontSize={12} tickLine={false} axisLine={false} />
-            <Tooltip cursor={{ fill: '#ffffff10' }} content={<CustomTooltip />} />
+          <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+            <XAxis dataKey="name" stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <YAxis stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <Tooltip cursor={{ fill: gridColor }} content={<CustomTooltip />} />
             <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-              {riskDistributionData.map((entry, index) => (
+              {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.color} />
               ))}
             </Bar>
@@ -108,21 +128,27 @@ export function RiskDistributionChart() {
 }
 
 export function FraudRadarChart() {
+  const { theme, systemTheme } = useTheme();
+  const currentTheme = theme === "system" ? systemTheme : theme;
+  const isDark = currentTheme === "dark" || !currentTheme;
+  const gridColor = isDark ? "#ffffff20" : "#cbd5e1";
+  const labelColor = isDark ? "#94a3b8" : "#475569";
+
   return (
     <Card className="h-[350px] flex flex-col glow-red hover:shadow-[0_0_20px_rgba(255,59,48,0.1)] transition-all duration-500">
       <CardHeader>
-        <CardTitle className="text-sm tracking-widest uppercase text-slate-400">Threat Radar Profile</CardTitle>
+        <CardTitle className="text-sm tracking-widest uppercase text-[var(--text-secondary)]">Threat Radar Profile</CardTitle>
       </CardHeader>
       <CardContent className="flex-1 min-h-0 pb-6 relative">
         <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
-          <div className="w-[80%] h-[80%] border border-[#FF3B30] rounded-full animate-[ping_3s_ease-in-out_infinite]" />
+          <div className="w-[80%] h-[80%] border border-[var(--intel-danger)] rounded-full animate-[ping_3s_ease-in-out_infinite]" />
         </div>
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-            <PolarGrid stroke="#ffffff20" />
-            <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10 }} />
+            <PolarGrid stroke={gridColor} />
+            <PolarAngleAxis dataKey="subject" tick={{ fill: labelColor, fontSize: 10 }} />
             <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-            <Radar name="Threat Level" dataKey="A" stroke="#FF3B30" strokeWidth={2} fill="#FF3B30" fillOpacity={0.3} />
+            <Radar name="Threat Level" dataKey="A" stroke="var(--intel-danger)" strokeWidth={2} fill="var(--intel-danger)" fillOpacity={0.3} />
             <Tooltip content={<CustomTooltip />} />
           </RadarChart>
         </ResponsiveContainer>

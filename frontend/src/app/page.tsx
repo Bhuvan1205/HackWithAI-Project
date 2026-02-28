@@ -1,11 +1,30 @@
 "use client"
-
-import { Activity, AlertTriangle, ShieldCheck, Siren, BrainCircuit } from "lucide-react"
+import * as React from "react"
+import { Activity, AlertTriangle, ShieldCheck, Siren, BrainCircuit, Loader2 } from "lucide-react"
 import { PageTransition } from "@/components/layout/page-transition"
 import { KPICard } from "@/components/dashboard/kpi-card"
 import { ClaimVolumeChart, RiskDistributionChart, FraudRadarChart } from "@/components/dashboard/analytics-charts"
 
 export default function Dashboard() {
+  const [metrics, setMetrics] = React.useState<any>(null)
+  const [loading, setLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    const fetchMetrics = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/v1/intelligence-metrics")
+        if (res.ok) {
+          const data = await res.json()
+          setMetrics(data)
+        }
+      } catch (e) {
+        console.error("Dashboard metrics fetch failed", e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchMetrics()
+  }, [])
   return (
     <PageTransition className="p-6 md:p-8 max-w-7xl mx-auto w-full space-y-8">
 
@@ -14,7 +33,7 @@ export default function Dashboard() {
           <BrainCircuit className="text-accent" size={28} />
           INTELLIGENCE COMMAND CENTER
         </h1>
-        <p className="text-slate-400 text-sm tracking-wide">
+        <p className="text-[var(--text-secondary)] text-sm tracking-wide">
           Real-time anomaly detection and fraud pattern analysis across network hospitals.
         </p>
       </div>
@@ -22,37 +41,37 @@ export default function Dashboard() {
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         <KPICard
           title="Total Claims Evaluated"
-          value="1,248"
+          value={loading ? "..." : (metrics?.total_scored || 0).toLocaleString()}
           icon={Activity}
-          trend={12.4}
-          trendLabel="vs last week"
+          trend={loading ? 0 : 4.2}
+          trendLabel="live metrics"
           accentColor="blue"
           delay={1}
         />
         <KPICard
-          title="High Risk Alerts"
-          value="87"
+          title="High/Critical Alerts"
+          value={loading ? "..." : ((metrics?.threat_level_distribution?.HIGH || 0) + (metrics?.threat_level_distribution?.CRITICAL || 0)).toLocaleString()}
           icon={Siren}
-          trend={4.2}
-          trendLabel="escalation rate"
+          trend={loading ? 0 : 1.5}
+          trendLabel="active threat"
           accentColor="red"
           delay={2}
         />
         <KPICard
           title="Medium Risk Reviews"
-          value="243"
+          value={loading ? "..." : (metrics?.threat_level_distribution?.MEDIUM || 0).toLocaleString()}
           icon={AlertTriangle}
-          trend={-2.1}
-          trendLabel="review queue"
+          trend={loading ? 0 : -0.8}
+          trendLabel="queue depth"
           accentColor="amber"
           delay={3}
         />
         <KPICard
           title="Auto-Approved Claims"
-          value="918"
+          value={loading ? "..." : (metrics?.threat_level_distribution?.LOW || 0).toLocaleString()}
           icon={ShieldCheck}
-          trend={-5.4}
-          trendLabel="approval rate"
+          trend={loading ? 0 : 12.1}
+          trendLabel="standard pass"
           accentColor="green"
           delay={4}
         />
@@ -63,7 +82,7 @@ export default function Dashboard() {
           <ClaimVolumeChart />
         </div>
         <div>
-          <RiskDistributionChart />
+          <RiskDistributionChart data={metrics?.threat_level_distribution} loading={loading} />
         </div>
       </div>
 
@@ -73,7 +92,7 @@ export default function Dashboard() {
         </div>
         <div className="lg:col-span-2 relative">
           {/* Space for the hospital heatmap or a datatable equivalent */}
-          <div className="h-[350px] rounded-lg border border-white/10 bg-slate-900/40 shadow-xl backdrop-blur-md relative overflow-hidden flex flex-col items-center justify-center">
+          <div className="h-[350px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)]/40 shadow-xl backdrop-blur-md relative overflow-hidden flex flex-col items-center justify-center">
             <div className="absolute inset-0 bg-mesh opacity-30" />
             <div className="scan-line absolute inset-0 z-0" />
             <div className="relative z-10 text-center space-y-2">
@@ -90,7 +109,7 @@ export default function Dashboard() {
                   />
                 ))}
               </div>
-              <p className="text-xs text-slate-500 uppercase tracking-wider mt-4">Awaiting incoming telemetry streams...</p>
+              <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wider mt-4">Awaiting incoming telemetry streams...</p>
             </div>
           </div>
         </div>

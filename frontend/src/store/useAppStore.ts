@@ -5,6 +5,8 @@ export type FraudPattern = 'PHANTOM' | 'UPCODING' | 'REPEAT_ABUSE' | 'MIXED' | '
 
 export interface IntelligenceResponse {
   claim_id: string
+  hospital_name?: string
+  patient_name?: string
   anomaly_score_norm: number
   rule_score_norm: number
   final_risk_score: number
@@ -28,6 +30,7 @@ export interface IntelligenceResponse {
   fraud_pattern_detected: "PHANTOM" | "UPCODING" | "REPEAT_ABUSE" | "MIXED" | "NONE"
   investigation_priority: "AUTO_APPROVE" | "REVIEW" | "ESCALATE"
   explanation: string
+  feature_values?: Record<string, any>
 }
 
 interface AppState {

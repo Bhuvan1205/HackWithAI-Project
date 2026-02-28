@@ -1,9 +1,46 @@
 @import "tailwindcss";
 
+@theme {
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-border-color: var(--border-color);
+  --color-accent-color: var(--accent-color);
+  --color-intel-primary: var(--intel-primary);
+  --color-intel-danger: var(--intel-danger);
+}
+
 @layer base {
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --text-primary: #000000;
+    --text-secondary: #334155;
+    --border-color: #e2e8f0;
+    --accent-color: #6366f1;
+    --intel-primary: #0d9488;
+    --intel-danger: #ef4444;
+  }
+
+  .dark {
+    --bg-primary: #000000;
+    --bg-secondary: #0f172a;
+    --text-primary: #ffffff;
+    --text-secondary: #cbd5e1;
+    --border-color: #1f2937;
+    --accent-color: #7c3aed;
+    --intel-primary: #00ffc8;
+    --intel-danger: #ff3c5f;
+  }
+
+  html,
   body {
-    background-color: #0A0F1F;
-    color: #f1f5f9;
+    background-color: transparent !important;
+  }
+
+  body {
+    color: var(--text-primary);
     letter-spacing: -0.015em;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
@@ -94,10 +131,54 @@
 
 /* Background gradient mesh animation */
 .bg-mesh {
-  background-color: #0A0F1F;
+  background-color: var(--bg-primary);
   background-image:
     radial-gradient(at 40% 20%, hsla(228, 100%, 74%, 0.08) 0px, transparent 50%),
     radial-gradient(at 80% 0%, hsla(189, 100%, 56%, 0.08) 0px, transparent 50%),
     radial-gradient(at 0% 50%, hsla(355, 100%, 93%, 0.05) 0px, transparent 50%);
   background-attachment: fixed;
+}
+
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+  }
+
+  50% {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.9);
+  }
+
+  100% {
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+  }
+}
+
+.critical-alert {
+  animation: pulseGlow 2s infinite;
+}
+
+/* Custom technical scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.2);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.4);
+}
+
+.floating-glass {
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
